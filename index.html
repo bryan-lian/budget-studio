@@ -1,88 +1,19 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Budget Studio - Worker Well-Being Lab</title>
-<style>
-body{font-family:system-ui,sans-serif;margin:0;background:#f5f6f8;color:#1d2330}
-header{background:#24304a;color:#fff;padding:14px 22px}header h1{margin:0;font-size:20px}
-main{max-width:1200px;margin:auto;padding:16px;overflow:auto}
-section{background:#fff;border-radius:8px;padding:14px 18px;margin-bottom:14px;box-shadow:0 1px 3px #0001}
-h2{font-size:16px;margin:0 0 10px}table{border-collapse:collapse;width:100%;font-size:13px}
-td,th{border-bottom:1px solid #e3e6ec;padding:4px 6px;text-align:left}th{background:#f0f2f6}
-input,select{font:inherit;padding:3px 5px;border:1px solid #c8ced8;border-radius:4px}
-input.n{width:80px;text-align:right}input.t{width:100%}.r{text-align:right}
-button{font:inherit;padding:6px 12px;border:0;border-radius:5px;background:#3b5bdb;color:#fff;cursor:pointer;margin:2px}
-button.s{background:#e3e6ec;color:#1d2330}.warn{background:#fde2e1;color:#8a1c1c;padding:8px;border-radius:6px}
-.ok{background:#e1f5e6;color:#1c5c2e;padding:8px;border-radius:6px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
-label{font-size:13px;display:block}tr.off td{opacity:.45}tfoot td{font-weight:600}
-</style></head><body>
-<header><h1>Budget Studio</h1><div style="font-size:13px">Scope-based evaluation budgets for the Worker Well-Being Lab</div></header>
-<main>
-<section><h2>Project snapshot</h2><div class="grid">
-<label>Project name<br><input class="t" id="name"></label>
-<label>Client / partner<br><input class="t" id="client"></label>
-<label>Client budget ceiling ($)<br><input class="n" id="ceiling" type="number"></label>
-<label>Indirect rate<br><select id="indSel"><option value="15">15% (CGU off-campus / nonprofit)</option><option value="25">25%</option><option value="45.46">45.46% (CGU federal on-campus)</option><option value="custom">Custom</option></select>
-<input class="n" id="indCustom" type="number" step="0.01" placeholder="%"></label>
-<label>Contingency %<br><input class="n" id="cont" type="number"> (default 0, off)</label>
-</div></section>
-<section><h2>Roles, rates, fringe</h2><table><thead><tr><th>Role</th><th>Hourly $</th><th>Day rate (x8)</th><th>Fringe group</th><th>Fringe %</th></tr></thead><tbody id="roles"></tbody></table></section>
-<section><h2>Deliverables and hours (scope drives labor cost)</h2>
-<table><thead><tr id="dhead"></tr></thead><tbody id="dels"></tbody></table>
-<button class="s" onclick="addDel()">+ Add deliverable</button></section>
-<section><h2>Other direct costs</h2><table><thead><tr><th>Item</th><th>Amount $</th><th>Assign to deliverable</th><th></th></tr></thead><tbody id="other"></tbody></table>
-<button class="s" onclick="addOther()">+ Add cost line</button></section>
-<section><h2>Capacity check (feasibility only, does not set price)</h2><div class="grid">
-<label>Weeks available<br><input class="n" id="weeks" type="number"></label>
-<label>Team hours per week available<br><input class="n" id="hpw" type="number"></label></div><div id="capOut" style="margin-top:8px"></div></section>
-<section><h2>Review</h2><div id="ceilOut"></div><div style="overflow-x:auto"><table id="byDel"></table></div><br><table id="cats"></table></section>
-<section><h2>Save and export</h2>
-<button onclick="save()">Save in browser</button><button class="s" onclick="load()">Load saved</button>
-<button class="s" onclick="dlJSON()">Download JSON</button><label style="display:inline">Upload JSON <input type="file" id="up" accept=".json"></label>
-<button class="s" onclick="dlCSV()">Export CSV</button><button class="s" onclick="if(confirm('Reset to defaults?')){S=def();render()}">Reset defaults</button><span id="msg"></span></section>
-</main>
-<script>
-const KEY='budgetStudioWWB_v2';
-function def(){return{name:'Worker Well-Being Program Evaluation',client:'Worker Well-Being Lab partner organization',ceiling:60000,indSel:'15',indCustom:'',cont:0,weeks:20,hpw:30,
-roles:[{n:'Principal Investigator',r:200,g:'faculty'},{n:'Project Manager',r:100,g:'staff'},{n:'Research Associate',r:50,g:'student'},{n:'Research Assistant',r:30,g:'student'}],
-fr:{faculty:28,staff:13,student:5},
-dels:[['Project management and meetings',[20,40,10,0]],['Evaluation plan and logic model',[8,16,24,10]],['Instrument development (well-being survey)',[6,10,30,20]],['IRB submission',[4,8,12,6]],['Data collection (pretest and posttest)',[4,16,40,60]],['Data analysis',[10,10,50,30]],['Final report and presentation',[12,16,40,20]]].map(([n,h])=>({n,h,on:true})),
-other:[{n:'Participant incentives',a:2000,d:4},{n:'Survey platform license',a:500,d:4},{n:'IRB fee (optional)',a:0,d:3},{n:'External evaluator (optional)',a:0,d:-1},{n:'Travel',a:0,d:-1}]}}
-let S=load(true)||def();
-const $=id=>document.getElementById(id),f=x=>'$'+Math.round(x).toLocaleString(),esc=s=>String(s).replace(/[&<>"]/g,c=>'&#'+c.charCodeAt(0)+';');
-const ind=()=>(S.indSel==='custom'?+S.indCustom||0:+S.indSel)/100;
-function calc(){const rows=S.dels.map((d,i)=>{let lab=0,fr=0,hrs=0;if(d.on)S.roles.forEach((r,j)=>{const c=(+d.h[j]||0)*r.r;lab+=c;fr+=c*S.fr[r.g]/100;hrs+=+d.h[j]||0});
-const oth=d.on?S.other.filter(o=>o.d==i).reduce((a,o)=>a+(+o.a||0),0):0;const dir=lab+fr+oth;return{n:d.n,on:d.on,hrs,lab,fr,oth,dir,ind:dir*ind()}});
-const un=S.other.filter(o=>o.d<0||o.d>=S.dels.length).reduce((a,o)=>a+(+o.a||0),0);
-const T=k=>rows.reduce((a,r)=>a+r[k],0);const lab=T('lab'),fr=T('fr'),oth=T('oth')+un,dir=lab+fr+oth,ic=dir*ind(),cont=dir*(+S.cont||0)/100;
-return{rows,un,lab,fr,oth,dir,ic,cont,total:dir+ic+cont,hrs:T('hrs')}}
-function render(){['name','client','ceiling','indSel','indCustom','cont','weeks','hpw'].forEach(k=>$(k).value=S[k]);$('indCustom').style.display=S.indSel==='custom'?'':'none';
-$('roles').innerHTML=S.roles.map((r,j)=>`<tr><td><input class="t" value="${esc(r.n)}" oninput="S.roles[${j}].n=this.value;upd()"></td><td><input class="n" type="number" value="${r.r}" oninput="S.roles[${j}].r=+this.value;upd()"></td><td id="day${j}"></td><td><select onchange="S.roles[${j}].g=this.value;render()">${['faculty','staff','student'].map(g=>`<option ${g==r.g?'selected':''}>${g}</option>`).join('')}</select></td><td><input class="n" type="number" value="${S.fr[r.g]}" oninput="S.fr['${r.g}']=+this.value;upd()"> (${r.g})</td></tr>`).join('');
-$('dhead').innerHTML='<th>Include</th><th>Deliverable</th>'+S.roles.map(r=>`<th>${esc(r.n)} hrs</th>`).join('')+'<th class="r">Hours</th><th class="r">Labor + fringe</th><th></th>';
-$('dels').innerHTML=S.dels.map((d,i)=>`<tr class="${d.on?'':'off'}"><td><input type="checkbox" ${d.on?'checked':''} onchange="S.dels[${i}].on=this.checked;render()"></td><td><input class="t" value="${esc(d.n)}" oninput="S.dels[${i}].n=this.value;upd()"></td>`+S.roles.map((r,j)=>`<td><input class="n" type="number" value="${d.h[j]||0}" oninput="S.dels[${i}].h[${j}]=+this.value;upd()"></td>`).join('')+`<td class="r" id="dh${i}"></td><td class="r" id="dc${i}"></td><td><button class="s" onclick="S.dels.splice(${i},1);fixOther(${i});render()">x</button></td></tr>`).join('');
-const opts=d=>'<option value="-1">Project-wide</option>'+S.dels.map((x,i)=>`<option value="${i}" ${i==d?'selected':''}>${esc(x.n)}</option>`).join('');
-$('other').innerHTML=S.other.map((o,k)=>`<tr><td><input class="t" value="${esc(o.n)}" oninput="S.other[${k}].n=this.value;upd()"></td><td><input class="n" type="number" value="${o.a}" oninput="S.other[${k}].a=+this.value;upd()"></td><td><select onchange="S.other[${k}].d=+this.value;upd()">${opts(o.d)}</select></td><td><button class="s" onclick="S.other.splice(${k},1);render()">x</button></td></tr>`).join('');upd()}
-function fixOther(i){S.other.forEach(o=>{if(o.d==i)o.d=-1;else if(o.d>i)o.d--})}
-function upd(){const C=calc();S.roles.forEach((r,j)=>$('day'+j).textContent=f(r.r*8));C.rows.forEach((r,i)=>{$('dh'+i).textContent=r.hrs;$('dc'+i).textContent=f(r.lab+r.fr)});
-const cap=(+S.weeks||0)*(+S.hpw||0);$('capOut').innerHTML=`<div class="${C.hrs>cap?'warn':'ok'}">Scoped hours: ${C.hrs} vs team capacity: ${cap}. ${C.hrs>cap?'Scope exceeds capacity. Cut scope or extend timeline.':'Scope fits within capacity.'}</div>`;
-const ce=+S.ceiling||0;$('ceilOut').innerHTML=ce?`<div class="${C.total>ce?'warn':'ok'}">Total ${f(C.total)} vs ceiling ${f(ce)}: ${C.total>ce?'OVER by '+f(C.total-ce):'under by '+f(ce-C.total)}</div><br>`:'';
-$('byDel').innerHTML='<tr><th>Deliverable</th><th class="r">Hours</th><th class="r">Labor</th><th class="r">Fringe</th><th class="r">Other</th><th class="r">Direct</th><th class="r">Indirect</th><th class="r">Total</th></tr>'+C.rows.filter(r=>r.on).map(r=>`<tr><td>${esc(r.n)}</td><td class="r">${r.hrs}</td><td class="r">${f(r.lab)}</td><td class="r">${f(r.fr)}</td><td class="r">${f(r.oth)}</td><td class="r">${f(r.dir)}</td><td class="r">${f(r.ind)}</td><td class="r">${f(r.dir+r.ind)}</td></tr>`).join('')+(C.un?`<tr><td>Project-wide costs</td><td></td><td></td><td></td><td class="r">${f(C.un)}</td><td class="r">${f(C.un)}</td><td class="r">${f(C.un*ind())}</td><td class="r">${f(C.un*(1+ind()))}</td></tr>`:'');
-$('cats').innerHTML=[['Personnel (labor)',C.lab],['Fringe benefits',C.fr],['Other direct costs',C.oth],['Direct subtotal',C.dir],[`Indirect (${(ind()*100).toFixed(2)}% of direct)`,C.ic],[`Contingency (${+S.cont||0}%, not subject to indirect)`,C.cont],['TOTAL',C.total]].map(([a,b])=>`<tr><td>${/subtotal|TOTAL/.test(a)?'<b>'+a+'</b>':a}</td><td class="r">${f(b)}</td></tr>`).join('');
-try{localStorage.setItem(KEY+'_auto',JSON.stringify(S))}catch(e){}}
-['name','client','ceiling','indSel','indCustom','cont','weeks','hpw'].forEach(k=>$(k).addEventListener('input',e=>{S[k]=e.target.value;if(k==='indSel')render();else upd()}));
-function addDel(){S.dels.push({n:'New deliverable',h:S.roles.map(()=>0),on:true});render()}
-function addOther(){S.other.push({n:'New cost',a:0,d:-1});render()}
-function msg(t){$('msg').textContent=' '+t;setTimeout(()=>$('msg').textContent='',2500)}
-function save(){localStorage.setItem(KEY,JSON.stringify(S));msg('Saved.')}
-function load(quiet){try{const v=localStorage.getItem(KEY)||(quiet&&localStorage.getItem(KEY+'_auto'));if(!v){if(!quiet)msg('Nothing saved.');return null}const o=JSON.parse(v);if(quiet)return o;S=o;render();msg('Loaded.')}catch(e){return null}}
-function dl(name,data,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;a.click()}
-const slug=()=>(S.name||'budget').replace(/[^a-z0-9]+/gi,'-');
-function dlJSON(){dl(slug()+'.json',JSON.stringify(S,null,2),'application/json')}
-$('up').onchange=e=>{const r=new FileReader();r.onload=()=>{try{S=JSON.parse(r.result);render();msg('Imported.')}catch(x){alert('Invalid JSON')}};r.readAsText(e.target.files[0])};
-function dlCSV(){const C=calc(),q=v=>'"'+String(v).replace(/"/g,'""')+'"',L=[];
-L.push(['Project',S.name],['Client',S.client],[]);L.push(['Role','Hourly','Day rate','Fringe %']);S.roles.forEach(r=>L.push([r.n,r.r,r.r*8,S.fr[r.g]]));L.push([]);
-L.push(['Deliverable',...S.roles.map(r=>r.n+' hrs'),'Hours','Labor','Fringe','Other','Direct','Indirect','Total']);
-C.rows.forEach((r,i)=>{if(r.on)L.push([r.n,...S.dels[i].h,r.hrs,r.lab,r.fr,r.oth,r.dir,r.ind,r.dir+r.ind].map(v=>typeof v=='number'?Math.round(v*100)/100:v))});
-if(C.un)L.push(['Project-wide costs',...S.roles.map(()=>''),'','','',C.un,C.un,C.un*ind(),C.un*(1+ind())]);
-L.push([],['Personnel',C.lab],['Fringe',C.fr],['Other direct',C.oth],['Direct subtotal',C.dir],['Indirect rate %',ind()*100],['Indirect',C.ic],['Contingency',C.cont],['TOTAL',C.total]);
-dl(slug()+'.csv',L.map(r=>r.map(q).join(',')).join('\n'),'text/csv')}
-render();
-</script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Budget Studio · Worker Well-Being Lab</title>
+  <meta name="description" content="Price a Worker Well-Being Lab evaluation from scoped hours, fringe, and indirect costs. Capacity stays a feasibility check.">
+  <link rel="stylesheet" href="css/studio.css">
+</head>
+<body>
+  <input id="loader" type="file" accept="application/json,.json" hidden>
+  <div id="app"></div>
+  <noscript>
+    <p style="padding:24px;font-family:sans-serif">Budget Studio needs JavaScript. Open this file in a browser, or serve the folder with any static host.</p>
+  </noscript>
+  <script src="js/engine.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
