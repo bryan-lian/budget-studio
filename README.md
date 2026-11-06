@@ -91,3 +91,14 @@ The thin MVP was a single cost form. This studio adds the full proposal workshee
 4. Review and export. Defensibility checklist, the Section 3 submission list, and copy-ready narrative.
 
 Who collects data shifts the balloon: site staff lower field hours and suggested travel, and raise recruit, pilot, and training hours.
+
+
+## Client handoff
+
+In **Review and export**, choose **Print client proposal** and save as PDF in the print dialog. This prints only the proposal, not the builder. The document includes scope, a clean budget, payments, delivery timing, and optional add-ons. The print layout uses 12pt body text, 11pt table text, and readable 10pt labels and footers. Readability takes priority over a fixed page count; longer scopes can run longer. Turn off browser-added headers and footers for the cleanest PDF.
+
+**Copy client proposal** and **Client proposal text** give the same plain-language content for email or a proposal. **Internal lab notes** and **Print internal studio** keep assumptions, detailed rates, capacity checks, and teaching notes separate.
+
+Excel's **Summary** is the client budget sheet, with currency formats, branding, header fill, and bold totals. The workbook still includes internal Takeoff and Rates sheets. Send the proposal PDF rather than the full workbook when internal detail should stay private.
+
+Client views omit zero other-direct costs and zero fees. Phase labels accompany deliverables instead of taking up blank-amount rows. Payment milestones tied to off or unpriced deliverables move to the next priced deliverable in scope order, or the last priced deliverable if none follows. The label changes to that deliverable's acceptance. Percentages and total pricing do not change. If nothing is priced, client milestones are omitted and marked to be agreed. Review payment terms before sharing, especially if multiple payments move to the same deliverable.

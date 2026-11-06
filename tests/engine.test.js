@@ -224,6 +224,7 @@ test("add-ons stay off the total until included and are not marked up", function
   const after = E.compute(state);
   assert.strictEqual(E.cents(after.total - before.total), 500);
   assert.strictEqual(after.indirect, before.indirect);
+  assert.ok(after.narratives.justification.includes("Included add-ons add $500.00"));
 });
 
 test("summary order and exports match the sample shape", function () {
@@ -293,6 +294,113 @@ test("turning every deliverable off zeros labor but keeps entered expenses", fun
   assert.strictEqual(model.direct, 80);
   assert.strictEqual(model.indirect, 12);
   assert.strictEqual(model.total, 92);
+});
+
+test("client summary omits phase amount rows and zero direct costs", function () {
+  const state = E.defaultState();
+  state.deliverables.find(function (d) { return d.id === "design"; }).enabled = false;
+  state.expenses.incentives = "125";
+  state.fees[0].note = "No fee charged";
+  const model = E.compute(state);
+  const rows = E.clientSummaryRows(model);
+  assert.ok(rows.every(function (r) { return r.amount !== null && r.kind !== "phase"; }));
+  assert.ok(!rows.some(function (r) { return r.id === "design"; }));
+  assert.ok(rows.filter(function (r) { return r.kind === "expense" || r.kind === "fee"; }).every(function (r) { return r.amount > 0; }));
+  assert.ok(rows.some(function (r) { return r.label === "Incentives" && r.amount === 125; }));
+  assert.ok(rows.find(function (r) { return r.kind === "deliverable"; }).phase);
+  assert.strictEqual(rows[rows.length - 1].amount, model.total);
+  assert.strictEqual(rows.filter(function (r) { return r.kind === "fringe"; }).length, 1);
+});
+
+test("off payment milestone moves to next priced deliverable without changing allocation", function () {
+  const state = E.defaultState();
+  state.deliverables.find(function (d) { return d.id === "design"; }).enabled = false;
+  const model = E.compute(state);
+  const payment = model.payments.items[0];
+  const index = model.deliverables.findIndex(function (d) { return d.id === "design"; });
+  const next = model.deliverables.slice(index + 1).find(function (d) { return d.enabled && d.labor > 0; });
+  assert.strictEqual(payment.deliverableId, next.id);
+  assert.strictEqual(payment.label, next.name + " accepted");
+  assert.strictEqual(payment.percent, 15);
+  assert.strictEqual(payment.amount, E.cents(model.total * .15));
+  assert.strictEqual(model.payments.percentSum, 100);
+  assert.ok(payment.retied);
+  assert.strictEqual(state.payments[0].deliverableId, "design");
+  assert.ok(!E.clientText(state).includes("Evaluation design accepted"));
+});
+
+test("last off milestone uses last priced item and unpriced enabled items are skipped", function () {
+  const state = E.defaultState();
+  state.deliverables.find(function (d) { return d.id === "final"; }).enabled = false;
+  state.deliverables.find(function (d) { return d.id === "design"; }).subtasks.forEach(function (s) { E.ROLE_IDS.forEach(function (r) { s.hours[r] = 0; }); });
+  const model = E.compute(state);
+  const eligible = model.deliverables.filter(function (d) { return d.enabled && d.labor > 0; });
+  assert.strictEqual(model.payments.items[2].deliverableId, eligible[eligible.length - 1].id);
+  assert.notStrictEqual(model.payments.items[0].deliverableId, "design");
+});
+
+test("empty priced scope and zero-percent payments are not client milestones", function () {
+  const state = E.defaultState();
+  state.payments[0].percent = 0;
+  assert.strictEqual(E.clientPayments(E.compute(state)).length, 2);
+  state.deliverables.forEach(function (d) { d.enabled = false; });
+  const model = E.compute(state);
+  assert.deepStrictEqual(E.clientPayments(model), []);
+  assert.ok(model.payments.items.every(function (p) { return !p.linked && p.label === "Schedule to be agreed"; }));
+  assert.ok(E.clientText(state).includes("once deliverables are priced"));
+});
+
+test("client narrative is pasteable and leaves lab jargon internal", function () {
+  const state = E.defaultState();
+  state.addons[2].included = true;
+  state.payments[0].percent = "10";
+  const text = E.clientText(state);
+  assert.ok(!/capacity|headcount|Week 10|usable.hours|buffer/i.test(text));
+  assert.ok(text.includes(E.money(E.compute(state).total)));
+  assert.ok(text.includes("Payment allocation is incomplete"));
+  assert.ok(text.includes("Add-on: Extra facilitated session"));
+  assert.ok(!text.includes("Incentives: $0.00"));
+  assert.ok(E.plainText(state).includes("INTERNAL LAB COPY"));
+  assert.strictEqual(E.compute(state).narratives.client, text);
+});
+
+test("workbook includes linked currency styles and filtered client summary", function () {
+  const text = Buffer.from(E.toXlsx(E.defaultState())).toString("utf8");
+  assert.ok(text.includes("xl/styles.xml"));
+  assert.ok(text.includes('Target="styles.xml"'));
+  assert.ok(text.includes('numFmtId="164"'));
+  assert.ok(text.includes('s="5"'));
+  assert.ok(text.includes('showGridLines="0"'));
+  const sheet = text.slice(text.indexOf('<worksheet'), text.indexOf('</worksheet>'));
+  assert.ok(sheet.includes("WWB LAB | CLIENT PROPOSAL"));
+  assert.ok(!sheet.includes("Consultants / transcription"));
+  assert.ok(sheet.includes("Labor subtotal"));
+});
+
+test("IFEDD reference scope retains the demo total and repairs the design milestone", function () {
+  const state = E.defaultState();
+  state.project.name = "IFEDD";
+  state.project.client = "IFEDD - CGU";
+  state.tier = "lean";
+  state.roles.find(function (r) { return r.id === "pi"; }).count = "0";
+  state.roles.find(function (r) { return r.id === "associate"; }).count = "0";
+  state.roles.find(function (r) { return r.id === "assistant"; }).count = "3";
+  state.deliverables.find(function (d) { return d.id === "design"; }).enabled = false;
+  state.deliverables.find(function (d) { return d.id === "interviews"; }).enabled = true;
+  state.addons[2].included = true;
+  const model = E.compute(state);
+  assert.strictEqual(model.labor, 3564);
+  assert.strictEqual(model.fringe, 178.2);
+  assert.strictEqual(model.total, 5779.53);
+  assert.strictEqual(model.payments.items[0].deliverableId, "feedback");
+  assert.ok(!E.clientText(state).includes("Evaluation design accepted"));
+});
+
+test("manually relinked payment cannot keep a stale off-deliverable label", function () {
+  const state = E.defaultState();
+  state.deliverables.find(function (d) { return d.id === "design"; }).enabled = false;
+  state.payments[0].deliverableId = "feedback";
+  assert.strictEqual(E.compute(state).payments.items[0].label, "Client feedback and revision accepted");
 });
 
 if (process.exitCode) {

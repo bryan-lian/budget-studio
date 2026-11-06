@@ -593,3 +593,46 @@ label.lbl, .lbl {
   body { background: white; }
   .top { position: static; }
 }
+
+/* Client handoff: a separate document, not a screenshot of the builder. */
+.client-proposal { display: none; }
+.phase-tag { display: block; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-500); margin-bottom: 3px; }
+.sheet tr.total td { background: var(--ink-900); color: white; font-size: 18px; font-weight: 700; border-top: 3px solid var(--ink-900); padding-top: 14px; padding-bottom: 14px; }
+
+@media print {
+  @page { size: letter; margin: 15mm 16mm; }
+  body.printing-client { background: white; color: #1a1a1c; }
+  body.printing-client > :not(#app) { display: none !important; }
+  body.printing-client #app > :not(.client-proposal) { display: none !important; }
+  /* Print at actual size. Readability takes priority over a fixed page count. */
+  body.printing-client .client-proposal { display: block !important; font: 12pt/1.45 var(--sans); color: #1a1a1c; }
+  .client-proposal { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .client-proposal .proposal-brand { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 3px solid #1a1a1c; }
+  .client-proposal .proposal-brand > :first-child { font-size: 20pt; font-weight: 800; letter-spacing: .06em; }
+  .client-proposal .proposal-brand > :last-child { text-align: right; font-size: 10pt; }
+  .client-proposal h1 { font-size: 20pt; line-height: 1.25; margin: 18px 0 8px; color: #1a1a1c; }
+  .client-proposal .proposal-meta { font-size: 11pt; color: #45464c; margin-bottom: 14px; }
+  .client-proposal .proposal-snapshot { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 14px; background: #f4f0e9; border: 1px solid #dddee2; }
+  .client-proposal .proposal-snapshot > div { flex: 1 1 115px; }
+  .client-proposal small { display: block; color: #45464c; font-size: 10pt; }
+  .client-proposal .proposal-snapshot strong { display: block; font-size: 20pt; line-height: 1.25; }
+  .client-proposal h2 { font-size: 14pt; color: #1a1a1c; margin: 16px 0 6px; break-after: avoid; }
+  .client-proposal p { margin: 5px 0 9px; }
+  .client-proposal table { width: 100%; border-collapse: collapse; font-size: 11pt; line-height: 1.4; }
+  .client-proposal th { background: #f4f0e9; color: #1a1a1c; font-weight: 700; text-align: left; }
+  .client-proposal th, .client-proposal td { padding: 8px 10px; border-bottom: 1px solid #dddee2; vertical-align: top; }
+  .client-proposal .amt { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .client-proposal tr.proposal-subtotal, .client-proposal tr.proposal-direct { font-weight: 700; background: #fbf8f3; }
+  .client-proposal tr.proposal-total td { background: #1a1a1c; color: white; font-size: 13pt; font-weight: 700; padding: 10px; }
+  .client-proposal thead { display: table-header-group; }
+  .client-proposal .proposal-phase { display: inline; font-size: 10pt; color: #45464c; margin-left: 8px; }
+  .client-proposal tr.proposal-total { break-before: avoid; }
+  .client-proposal tr, .client-proposal .proposal-snapshot, .client-proposal .proposal-brand, .client-proposal li { break-inside: avoid; }
+  .client-proposal section { break-inside: auto; }
+  .client-proposal .proposal-payments { break-inside: avoid; }
+  /* Keep the optional menu with its disclaimer instead of a footer-only page. */
+  .client-proposal section:last-of-type { break-inside: avoid; break-after: avoid; }
+  .client-proposal .proposal-addons { padding-left: 18px; margin: 6px 0; }
+  .client-proposal .proposal-addons li { margin-bottom: 5px; }
+  .client-proposal footer { border-top: 1px solid #bdbec4; padding-top: 10px; margin-top: 18px; font-size: 10pt; line-height: 1.45; color: #45464c; break-inside: avoid; break-before: avoid; }
+}

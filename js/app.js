@@ -362,13 +362,18 @@
       const base = fileBase();
       if (kind === "csv") download(base + "-budget.csv", new Blob(["\uFEFF" + E.toCsv(state)], { type: "text/csv;charset=utf-8" }));
       else if (kind === "xlsx") download(base + "-budget.xlsx", new Blob([E.toXlsx(state)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      else if (kind === "labtxt") download(base + "-internal-lab-notes.txt", new Blob([E.plainText(state)], { type: "text/plain;charset=utf-8" }));
       else if (kind === "json") download(base + "-budget.json", new Blob([JSON.stringify(E.exportPayload(state), null, 2)], { type: "application/json" }));
-      else if (kind === "txt") download(base + "-narrative.txt", new Blob([E.plainText(state)], { type: "text/plain;charset=utf-8" }));
+      else if (kind === "txt") download(base + "-client-proposal.txt", new Blob([E.clientText(state)], { type: "text/plain;charset=utf-8" }));
       return;
     } else if (action === "load") {
       document.getElementById("loader").click();
       return;
+    } else if (action === "print-client") {
+      document.body.classList.add("printing-client");
+      window.print();
     } else if (action === "print") {
+      document.body.classList.remove("printing-client");
       window.print();
       return;
     } else if (action === "reset") {
@@ -418,10 +423,10 @@
   }
 
   function summaryTable(model) {
-    const body = model.summaryRows.map(function (row) {
+    const body = E.clientSummaryRows(model).map(function (row) {
       if (row.amount == null) return '<tr class="phase"><td colspan="2">' + esc(row.label) + "</td></tr>";
       const note = row.note ? '<div class="note">' + esc(row.note) + "</div>" : "";
-      return '<tr class="' + esc(row.kind) + '"><td>' + esc(row.label) + note + '</td><td class="amt">' + E.money(row.amount) + "</td></tr>";
+      return '<tr class="' + esc(row.kind === 'addon' ? 'included-addon' : row.kind) + '"><td>' + (row.phase ? '<span class="phase-tag">' + esc(row.phase) + "</span>" : "") + esc(row.label) + note + '</td><td class="amt">' + E.money(row.amount) + "</td></tr>";
     }).join("");
     const fringe = model.roles.map(function (r) {
       return esc(r.name) + " " + E.formatPctNumber(r.fringePct) + "% · " + E.money(r.fringe);
@@ -696,7 +701,7 @@
         '<button type="button" class="btn-tiny btn-danger" data-action="pay-remove" data-id="' + esc(src.id) + '">Remove</button></div>' +
         '<div class="grid-2"><div><label class="lbl">Percent</label>' + field("pay|" + src.id + "|percent", src.percent, 'inputmode="decimal"') +
         '</div><div><label class="lbl">Tied to deliverable</label>' +
-        select("pay|" + src.id + "|deliverableId", state.deliverables.map(function (d) { return [d.id, d.name]; }), src.deliverableId) +
+        select("pay|" + src.id + "|deliverableId", model.deliverables.filter(function (d) { return d.enabled && d.labor > 0; }).map(function (d) { return [d.id, d.name]; }), item.deliverableId) +
         "</div></div></div>";
     }).join("");
 
@@ -726,7 +731,9 @@
       '<div class="panel mt"><h3>Timeline</h3>' + timelineBlock(model) + "</div>" +
       '<div class="panel mt"><h3>Payment schedule</h3><p class="hint">Fixed cost is the default: paid per deliverable, on time. Run over and the lab absorbs it. Come in under and the lab keeps the difference. Cost reimbursement bills hours and stops when funds run out.</p>' +
       segs("contract", "contractType", [["fixed", "Fixed cost"], ["reimbursement", "Cost reimbursement"]], state.contractType) +
+      '<p class="hint mt-sm">If a milestone is off or has no priced labor, its payment moves to the next priced deliverable in scope order, or the last priced deliverable. Percentages do not change.</p>' +
       pays +
+      (model.payments.items.some(function (p) { return p.retied; }) ? '<p class="hint">One or more milestones were retied. Review the client payment schedule before sharing.</p>' : '') +
       '<div class="actions mt"><button type="button" class="btn-tiny" data-action="pay-add">Add payment</button></div>' +
       '<p class="hint mt-sm">Percents sum to ' + E.formatPctNumber(model.payments.percentSum) + "%." + (model.payments.balanced ? "" : " They need to sum to 100% for a fixed-cost contract.") + "</p></div>" +
       '<div class="panel mt"><h3>Where the weight sits</h3>' + weightBlock(model) + "</div>" +
@@ -737,13 +744,48 @@
     );
   }
 
+  function clientProposal(model) {
+    const p = state.project;
+    const payments = E.clientPayments(model);
+    const optional = model.addons.filter(function (a) { return !a.included && a.price > 0; });
+    const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "America/Los_Angeles" });
+    const budget = E.clientSummaryRows(model).map(function (row) {
+      return '<tr class="proposal-' + esc(row.kind) + '"><td>' + esc(row.label) + (row.phase ? '<span class="proposal-phase">' + esc(row.phase) + '</span>' : '') + '</td><td class="amt">' + E.money(row.amount) + '</td></tr>';
+    }).join('');
+    const schedule = model.timeline.rows.filter(function (r) { return r.enabled; }).map(function (r) {
+      const months = r.months.map(function (i) { return model.timeline.months[i].full; });
+      return '<tr><td>' + esc(r.name) + '</td><td>' + esc(months.length ? months.length === 1 ? months[0] : months[0] + ' to ' + months[months.length - 1] : 'Dates to be agreed') + '</td></tr>';
+    }).join('');
+    return '<article class="client-proposal" aria-label="Client planning proposal">' +
+      '<header class="proposal-brand"><span>WWB LAB</span><span>Worker Well-Being Lab<br>Client planning proposal</span></header>' +
+      '<h1>' + esc(p.name || 'Untitled project') + '</h1>' +
+      '<p class="proposal-meta">Prepared for <strong>' + esc(p.client || 'Client') + '</strong> · ' + esc(p.clientType || 'Organization') + '<br>' +
+      esc(E.projectTypeLabel(p.projectType).replace(/^(a|an) /, "").replace(/^./, function (c) { return c.toUpperCase(); })) + ' · ' + esc(E.stageLabel(p.budgetStage)) + ' · ' + date + ' (PT)</p>' +
+      '<div class="proposal-snapshot"><div><small>Proposed total</small><strong>' + E.money(model.total) + '</strong></div>' +
+      '<div><small>Contract</small>' + (model.payments.contractType === 'fixed' ? 'Fixed cost' : 'Cost reimbursement') + '</div>' +
+      '<div><small>Delivery window</small>' + esc(p.deliveryWindow || model.timeline.startLabel + ' to ' + model.timeline.months[model.timeline.months.length - 1].full) + '</div>' +
+      (model.ceilingKnown ? '<div><small>Client ceiling</small>' + E.money(model.ceiling) + (model.overCeiling ? ' (proposal exceeds ceiling)' : '') + '</div>' : '') + '</div>' +
+      '<section><h2>Scope</h2><p>' + esc(E.clientScope(state, model)) + '</p></section>' +
+      '<section><h2>Proposed investment</h2><table class="proposal-table"><thead><tr><th>Budget line</th><th class="amt">Amount</th></tr></thead><tbody>' + budget + '</tbody></table></section>' +
+      '<section class="proposal-payments"><h2>Payments</h2><p>' + (model.payments.contractType === 'fixed' ? 'Due when the linked deliverable is accepted.' : 'Cost reimbursement invoices reflect work performed. These amounts are a planning guide, not fixed fees.') + '</p>' +
+      (payments.length ? '<table class="proposal-table"><thead><tr><th>Milestone</th><th class="amt">Share</th><th class="amt">Amount</th></tr></thead><tbody>' + payments.map(function (item) {
+        return '<tr><td>' + esc(item.label) + (item.label.toLowerCase().indexOf(item.deliverableName.toLowerCase()) !== -1 ? '' : '<small>' + esc(item.deliverableName) + '</small>') + '</td><td class="amt">' + E.formatPctNumber(item.percent) + '%</td><td class="amt">' + E.money(item.amount) + '</td></tr>';
+      }).join('') + '</tbody></table>' : '<p>Payment milestones will be agreed once deliverables are priced.</p>') +
+      (!model.payments.balanced ? '<p><strong>Payment allocation is incomplete. Confirm before agreement.</strong></p>' : '') + '</section>' +
+      '<section><h2>Delivery plan</h2><table class="proposal-table proposal-timeline"><thead><tr><th>Deliverable</th><th>Planned timing</th></tr></thead><tbody>' + schedule + '</tbody></table><p>Dates are subject to agreement and timely client feedback.</p></section>' +
+      '<section><h2>Optional add-ons</h2><p>Not included in the proposed total. Confirm scope and price before work starts.</p>' +
+      (optional.length ? '<ul class="proposal-addons">' + optional.map(function (a) { return '<li>' + esc(a.name) + ' <strong>' + E.money(a.price) + '</strong>' + (a.pricing === 'hourly' ? ' (' + E.formatHour(a.hours) + ' hours at ' + E.money(a.rate) + '/hr)' : ' fixed') + '</li>'; }).join('') + '</ul>' : '<p>No optional add-ons quoted.</p>') + '</section>' +
+      '<footer>WWB Lab · Planning proposal only. Not an institutional submission.<br>Scope, dates, and payment terms are subject to agreement.</footer></article>';
+  }
+
   function step4(model) {
     const open = state.ui.open.s4;
     const blocks = [
-      ["summary", "Budget summary"],
-      ["assumptions", "Assumptions"],
+      ["client", "Client proposal text"],
+      ["summary", "Internal lab copy: budget summary"],
+      ["assumptions", "Internal lab copy: assumptions"],
       ["scope", "Scope statement"],
-      ["justification", "Budget justification"],
+      ["justification", "Internal lab copy: budget justification"],
       ["payments", "Payment schedule"],
       ["addons", "Priced add-ons"]
     ].map(function (b) {
@@ -751,12 +793,15 @@
       return '<article class="export"><header><span>' + b[1] + '</span><button type="button" class="btn-tiny" data-action="copy" data-which="' + b[0] + '" data-copy-for="' + b[0] + '">' + label + "</button></header><pre>" + esc(model.narratives[b[0]]) + "</pre></article>";
     }).join("");
     return card("4", "Review and export", "Is this ready to send? Copy the pieces, or download the workbook.", open, "s4",
-      '<div class="actions noprint"><button type="button" class="btn" data-action="download" data-kind="csv">Download CSV</button>' +
+      '<div class="actions noprint"><button type="button" class="btn-accent" data-action="print-client">Print client proposal</button>' +
+      '<button type="button" class="btn" data-action="copy" data-which="client">Copy client proposal</button>' +
+      '<button type="button" class="btn" data-action="download" data-kind="csv">Download CSV</button>' +
       '<button type="button" class="btn" data-action="download" data-kind="xlsx">Download Excel</button>' +
       '<button type="button" class="btn" data-action="download" data-kind="json">Save JSON</button>' +
       '<button type="button" class="btn" data-action="load">Load JSON</button>' +
-      '<button type="button" class="btn" data-action="download" data-kind="txt">Narrative text</button>' +
-      '<button type="button" class="btn" data-action="print">Print</button>' +
+      '<button type="button" class="btn" data-action="download" data-kind="txt">Client proposal text</button>' +
+      '<button type="button" class="btn" data-action="print">Print internal studio</button>' +
+      '<button type="button" class="btn" data-action="download" data-kind="labtxt">Internal lab notes</button>' +
       '<button type="button" class="btn-ghost btn-danger" data-action="reset">Reset template</button></div>' +
       '<h3 style="margin-top:18px;font-size:15px;color:var(--ink-900)">Defensibility checklist</h3><div class="mt-sm">' + checks(model.checklist) + "</div>" +
       '<h3 style="margin-top:18px;font-size:15px;color:var(--ink-900)">Section 3 box</h3><p class="hint">From the Week 10 deck: what has to be in the team submission.</p><div class="mt-sm">' + checks(model.section3) + "</div>" +
@@ -827,7 +872,7 @@
       '<span class="saved">' + (state.ui.savedAt ? "Saved in this browser" : "Autosaves in this browser") + "</span>" +
       '<button type="button" class="btn-accent" data-action="goto-review">Review and export</button></div></div></header>' +
       '<main class="wrap">' + notice + '<div class="layout"><div class="steps">' + step1(model) + step2(model) + step3(model) + step4(model) + "</div>" + rail(model) + "</div></main>" +
-      '<p class="foot">Worker Well-Being Lab · Budget Studio. Default rates follow the Week 10 sample and the Section 3 rate card. This is a planning tool for a proposal, not an institutional submission system.</p>';
+      '<p class="foot">Worker Well-Being Lab · Budget Studio. Default rates follow the Week 10 sample and the Section 3 rate card. This is a planning tool for a proposal, not an institutional submission system.</p>' + clientProposal(model);
     if (pendingCaret && pendingCaret.bind) {
       const el = root.querySelector('[data-bind="' + pendingCaret.bind.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"]');
       if (el) {
@@ -845,6 +890,7 @@
     }
   }
 
+  window.addEventListener("afterprint", function () { document.body.classList.remove("printing-client"); });
   load();
   root.addEventListener("click", onClick);
   root.addEventListener("input", function (e) {
